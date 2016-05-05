@@ -1,10 +1,3 @@
-/**
- * Created with IntelliJ IDEA.
- * User: clowwindy
- * Date: 12-11-2
- * Time: 上午10:31
- * To change this template use File | Settings | File Templates.
- */
 package shadowsocks
 
 import (
