@@ -398,12 +398,12 @@ func statusPage(w http.ResponseWriter, req *http.Request) {
 func readable(bytes int64) string {
 	switch  {
 		case bytes > 1073741824 :
-			return fmt.Sprintf("%.2fGB",bytes/1073741824.0)
+			return fmt.Sprintf("%.2f GB",(bytes/1073741824.0))
 		case bytes > 1048576 :
-			return fmt.Sprintf("%.2fMB",bytes/1048576.0)
+			return fmt.Sprintf("%.2f MB",(bytes/1048576.0))
 		case bytes > 1024 :
-			return fmt.Sprintf("%.2fKB",bytes/1024.0)
+			return fmt.Sprintf("%.2f KB",(bytes/1024.0))
 		default:
-			return fmt.Sprintf("%dBytes",bytes)
+			return fmt.Sprintf("%d Bytes",bytes)
 	}
 }
