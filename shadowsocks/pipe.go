@@ -47,7 +47,6 @@ func PipeThenClose(src, dst net.Conn) {
 
 // PipeThenClose1 copies data from src to dst, closes dst when done.
 func PipeThenClose1(src *Conn, dst net.Conn) {	
-	var u int
 	defer dst.Close()
 	buf := leakyBuf.Get()
 	defer leakyBuf.Put(buf)
@@ -57,7 +56,8 @@ func PipeThenClose1(src *Conn, dst net.Conn) {
 		// read may return EOF with n > 0
 		// should always process n > 0 bytes before handling error
 		if n > 0 {
-			u += n
+			Debug.Printf("UpdateU src.U = %v",n)
+			updateU(src.GetPort(),n)
 			// Note: avoid overwrite err returned by Read.
 			if _, err := dst.Write(buf[0:n]); err != nil {
 				Debug.Println("write:", err)
@@ -76,13 +76,10 @@ func PipeThenClose1(src *Conn, dst net.Conn) {
 			break
 		}
 	}
-	Debug.Printf("src.U = %v",u)
-	updateUDT(src.GetPort(),u,0)
 }
 
 // PipeThenClose2 copies data from src to dst, closes dst when done.
 func PipeThenClose2(src net.Conn, dst *Conn) {
-	var d int
 	defer dst.Close()
 	buf := leakyBuf.Get()
 	defer leakyBuf.Put(buf)
@@ -92,7 +89,8 @@ func PipeThenClose2(src net.Conn, dst *Conn) {
 		// read may return EOF with n > 0
 		// should always process n > 0 bytes before handling error
 		if n > 0 {
-			d += n
+			Debug.Printf("UpdateU dst.D = %v",n)
+			updateD(dst.GetPort(),n)
 			// Note: avoid overwrite err returned by Read.
 			if _, err := dst.Write(buf[0:n]); err != nil {
 				Debug.Println("write:", err)
@@ -111,13 +109,10 @@ func PipeThenClose2(src net.Conn, dst *Conn) {
 			break
 		}
 	}
-	Debug.Printf("dst.D = %v",d)
-	updateUDT(dst.GetPort(),0,d)
 }
 
 // PipeThenCloseOta copies data from src to dst, closes dst when done, with ota verification.
 func PipeThenCloseOta(src *Conn, dst net.Conn) {
-	var u int
 	const (
 		dataLenLen  = 2
 		hmacSha1Len = 10
@@ -133,7 +128,8 @@ func PipeThenCloseOta(src *Conn, dst net.Conn) {
 	for i := 1; ; i += 1 {
 		SetReadTimeout(src)
 		if n, err := io.ReadFull(src, buf[:dataLenLen+hmacSha1Len]); err != nil {
-			u += n
+			Debug.Printf("UpdateU src.U = %v",n)
+			updateU(src.GetPort(),n)
 			if err == io.EOF {
 				break
 			}
@@ -150,7 +146,8 @@ func PipeThenCloseOta(src *Conn, dst net.Conn) {
 			dataBuf = buf[idxData0 : idxData0+dataLen]
 		}
 		if n, err := io.ReadFull(src, dataBuf); err != nil {
-			u += n
+			Debug.Printf("UpdateU src.U = %v",n)
+			updateU(src.GetPort(),n)
 			if err == io.EOF {
 				break
 			}
@@ -170,6 +167,4 @@ func PipeThenCloseOta(src *Conn, dst net.Conn) {
 			break
 		}
 	}
-	Debug.Printf("src.U = %v",u)
-	updateUDT(src.GetPort(),u,0)
 }

@@ -295,6 +295,7 @@ func run(port, password string, auth bool) {
 				continue
 			}
 		}
+		ss.AddStat(port)
 		go handleConnection(ss.NewConn(conn, cipher.Copy(),port), auth)
 	}
 }

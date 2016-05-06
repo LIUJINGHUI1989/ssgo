@@ -3,6 +3,7 @@ package shadowsocks
 import (
     "sync"
     "time"
+    "fmt"
 )
 
 var Stats map[string]*PortStats
@@ -20,44 +21,41 @@ func InitStats() {
     Stats = make(map[string]*PortStats)
 }
 
-
-func updateUDT(port string,u int,d int) {
+func updateU(port string,u int) {
     stat, ok := Stats[port]
     if !ok {
-		Debug.Printf("updateStat port:%s record not found! Add!",port)
-		addStat(port,u,d)
-	} else {
-        t := time.Now().Unix()
-		stat.Lock()
-		Debug.Printf("updateStat port:%s. u:%d d:%d t:%d", port,u,d,t)
-
-		Debug.Printf("Before: port:%s. u:%d d:%d t:%d", port,stat.U,stat.D,stat.T)
-		stat.U += int64(u)
-        stat.D += int64(d)
-		stat.T = t
-		Debug.Printf("After: port:%s. u:%d d:%d t:%d", port,stat.U,stat.D,stat.T)
-		stat.Unlock()
-	}
+        panic(fmt.Errorf("Port: %s 's stat doesn't exist!",port))
+    }
+    stat.Lock()
+    defer stat.Unlock()
+    if (u>0) {
+        stat.U += int64(u) + 534
+        stat.T = time.Now().Unix()
+    }
 }
 
-func addStat(port string,u int,d int) {
-    var mutex sync.Mutex
-    
+func updateD(port string,d int) {
+    stat, ok := Stats[port]
+    if !ok {
+        panic(fmt.Errorf("Port: %s 's stat doesn't exist!",port))
+    }
+    stat.Lock()
+    defer stat.Unlock()
+    if (d>0) {
+        stat.D += int64(d) + 534
+        stat.T = time.Now().Unix()
+    }
+}
+
+
+func AddStat(port string) {
+    var mutex sync.Mutex    
     mutex.Lock()
     defer mutex.Unlock()
-    
-    stat, ok := Stats[port]
-    t:=time.Now().Unix()
+    _, ok := Stats[port]
     if !ok {
         Debug.Printf("updateStat port:%s record not found! Add!",port)
-        Stats[port] = &PortStats{U:int64(u),D:int64(d),T:t}
-        Debug.Printf("addStat: port:%s u:%d d:%d t:%d",port,u,d,t)
-    } else {
-        Debug.Printf("[ERR addStat to updateStat] port:%s. u:%d d:%d t:%d", port,u,d,t)
-        Debug.Printf("Before: port:%s. u:%d d:%d t:%d", port,stat.U,stat.D,stat.T)
-        stat.U += int64(u)
-        stat.D += int64(d)
-		stat.T = t
-        Debug.Printf("After: port:%s. u:%d d:%d t:%d", port,stat.U,stat.D,stat.T)
+        Stats[port] = &PortStats{U:0,D:0,T:0}
+        Debug.Printf("addStat: port:%s",port)
     }
 }
