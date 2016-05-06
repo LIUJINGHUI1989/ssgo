@@ -12,6 +12,8 @@ type PortStats struct {
     sync.Mutex
     D int64
     U int64
+    De int64
+    Ue int64
     T int64
 }
 

@@ -390,7 +390,7 @@ func main() {
 func statusPage(w http.ResponseWriter, req *http.Request) {
 	str := "ShadowSocks Server Stat:\n\n"
 	for port,stat:=range ss.Stats  {
-		str += fmt.Sprintf("Port: %s\t U: %v D: %v T: %v\n",port,stat.U,stat.D,stat.T)	 
+		str += fmt.Sprintf("Port: %s\t U: %v(%v) D: %v(%v) T: %v\n",port,stat.U,stat.U+stat.Ue,stat.D,stat.D+stat.De,stat.T)	 
 	} 
 	io.WriteString(w, str)
 }
