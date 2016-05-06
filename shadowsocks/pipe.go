@@ -89,7 +89,7 @@ func PipeThenClose2(src net.Conn, dst *Conn) {
 		// read may return EOF with n > 0
 		// should always process n > 0 bytes before handling error
 		if n > 0 {
-			Debug.Printf("UpdateU dst.D = %v",n)
+			Debug.Printf("UpdateD dst.D = %v",n)
 			updateD(dst.GetPort(),n)
 			// Note: avoid overwrite err returned by Read.
 			if _, err := dst.Write(buf[0:n]); err != nil {
