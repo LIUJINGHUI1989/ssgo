@@ -31,7 +31,8 @@ func updateU(port string,u int) {
     stat.Lock()
     defer stat.Unlock()
     if (u>0) {
-        stat.U += int64(u) + 534
+        stat.U += int64(u)
+        stat.Ue += 534
         stat.T = time.Now().Unix()
     }
 }
@@ -44,7 +45,8 @@ func updateD(port string,d int) {
     stat.Lock()
     defer stat.Unlock()
     if (d>0) {
-        stat.D += int64(d) + 534
+        stat.D += int64(d)
+        stat.De += 534
         stat.T = time.Now().Unix()
     }
 }
