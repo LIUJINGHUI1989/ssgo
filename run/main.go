@@ -17,6 +17,7 @@ import (
 	"sync"
 	"syscall"
 	"net/http"
+	"time"
 
 	ss "github.com/realpg/ssgo/shadowsocks"
 )
@@ -390,7 +391,19 @@ func main() {
 func statusPage(w http.ResponseWriter, req *http.Request) {
 	str := "ShadowSocks Server Stat:\n\n"
 	for port,stat:=range ss.Stats  {
-		str += fmt.Sprintf("Port: %s\t U: %v(%v) D: %v(%v) T: %v\n",port,stat.U,stat.U+stat.Ue,stat.D,stat.D+stat.De,stat.T)	 
+		str += fmt.Sprintf("Port: %s\t U: %v(%v) D: %v(%v) T: %v\n",port,readable(stat.U),readable(stat.U+stat.Ue),readable(stat.D),readable(stat.D+stat.De),time.Unix(stat.T,0).Format("2006-01-02 15:04:05"))	 
 	} 
 	io.WriteString(w, str)
+}
+func readable(bytes int64) string {
+	switch  {
+		case bytes > 1073741824 :
+			return fmt.Sprintf("%.2fGB",bytes/1073741824.0)
+		case bytes > 1048576 :
+			return fmt.Sprintf("%.2fMB",bytes/1048576.0)
+		case bytes > 1024 :
+			return fmt.Sprintf("%.2fKB",bytes/1024.0)
+		default:
+			return fmt.Sprintf("%dBytes",bytes)
+	}
 }
