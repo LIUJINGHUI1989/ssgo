@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"net/http"
 
 	ss "github.com/realpg/ssgo/shadowsocks"
 )
@@ -163,12 +164,13 @@ func handleConnection(conn *ss.Conn, auth bool) {
 	if ota {
 		go ss.PipeThenCloseOta(conn, remote)
 	} else {
-		go ss.PipeThenClose(conn, remote)
+		go ss.PipeThenClose1(conn, remote)
 	}
-	ss.PipeThenClose(remote, conn)
+	ss.PipeThenClose2(remote, conn)
 	closed = true
 	return
 }
+
 
 type PortListener struct {
 	password string
@@ -293,7 +295,7 @@ func run(port, password string, auth bool) {
 				continue
 			}
 		}
-		go handleConnection(ss.NewConn(conn, cipher.Copy()), auth)
+		go handleConnection(ss.NewConn(conn, cipher.Copy(),port), auth)
 	}
 }
 
@@ -317,12 +319,12 @@ func unifyPortPassword(config *ss.Config) (err error) {
 	return
 }
 
+
 var configFile string
 var config *ss.Config
 
 func main() {
 	log.SetOutput(os.Stdout)
-
 	var cmdConfig ss.Config
 	var printVer bool
 	var core int
@@ -335,8 +337,8 @@ func main() {
 	flag.StringVar(&cmdConfig.Method, "m", "", "encryption method, default: aes-256-cfb")
 	flag.IntVar(&core, "core", 0, "maximum number of CPU cores to use, default is determinied by Go runtime")
 	flag.BoolVar((*bool)(&debug), "d", false, "print debug message")
-
 	flag.Parse()
+	ss.InitStats()
 
 	if printVer {
 		ss.PrintVersion()
@@ -377,6 +379,17 @@ func main() {
 	for port, password := range config.PortPassword {
 		go run(port, password, config.Auth)
 	}
+	
+	http.HandleFunc("/", statusPage)
+	http.ListenAndServe(":7777", nil)
 
 	waitSignal()
+}
+
+func statusPage(w http.ResponseWriter, req *http.Request) {
+	str := "ShadowSocks Server Stat:\n\n"
+	for port,stat:=range ss.Stats  {
+		str += fmt.Sprintf("Port: %s\t U: %v D: %v T: %v\n",port,stat.U,stat.D,stat.T)	 
+	} 
+	io.WriteString(w, str)
 }

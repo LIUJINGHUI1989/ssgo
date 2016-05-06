@@ -19,14 +19,22 @@ type Conn struct {
 	readBuf   []byte
 	writeBuf  []byte
 	chunkId   uint32
+	port string
 }
 
-func NewConn(c net.Conn, cipher *Cipher) *Conn {
+
+func (c *Conn) GetPort() string {
+	return c.port
+}
+
+func NewConn(c net.Conn, cipher *Cipher, port string) *Conn {
 	return &Conn{
 		Conn:     c,
 		Cipher:   cipher,
 		readBuf:  leakyBuf.Get(),
-		writeBuf: leakyBuf.Get()}
+		writeBuf: leakyBuf.Get(),
+		port: port,
+	}
 }
 
 func (c *Conn) Close() error {
@@ -63,7 +71,7 @@ func DialWithRawAddr(rawaddr []byte, server string, cipher *Cipher) (c *Conn, er
 	if err != nil {
 		return
 	}
-	c = NewConn(conn, cipher)
+	c = NewConn(conn, cipher, "0")
 	if cipher.ota {
 		if c.enc == nil {
 			if _, err = c.initEncrypt(); err != nil {
