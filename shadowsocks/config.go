@@ -1,6 +1,7 @@
 package shadowsocks
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -12,10 +13,6 @@ import (
 )
 
 type Config struct {
-	Server     interface{} `json:"server"`
-	ServerPort int         `json:"server_port"`
-	LocalPort  int         `json:"local_port"`
-	Password   string      `json:"password"`
 	Method     string      `json:"method"` // encryption method
 	Auth       bool        `json:"auth"`   // one time auth
 
@@ -28,42 +25,20 @@ type Config struct {
 	// The order of servers in the client config is significant, so use array
 	// instead of map to preserve the order.
 	ServerPassword [][]string `json:"server_password"`
-}
 
+	DatabaseHost string	`json:"dbhost"`
+	DatabasePort string	`json:"dbport"`
+	DatabaseUnix string	`json:"dbunix"`
+	DatabaseUser string	`json:"dbuser"`
+	DatabasePass string	`json:"dbpass"`
+	DatabaseName string	`json:"dbname"`
+	
+	ServerTag string	`json:"servertag"`	
+	
+}
 var readTimeout time.Duration
 
-func (config *Config) GetServerArray() []string {
-	// Specifying multiple servers in the "server" options is deprecated.
-	// But for backward compatiblity, keep this.
-	if config.Server == nil {
-		return nil
-	}
-	single, ok := config.Server.(string)
-	if ok {
-		return []string{single}
-	}
-	arr, ok := config.Server.([]interface{})
-	if ok {
-		/*
-			if len(arr) > 1 {
-				log.Println("Multiple servers in \"server\" option is deprecated. " +
-					"Please use \"server_password\" instead.")
-			}
-		*/
-		serverArr := make([]string, len(arr), len(arr))
-		for i, s := range arr {
-			serverArr[i], ok = s.(string)
-			if !ok {
-				goto typeError
-			}
-		}
-		return serverArr
-	}
-typeError:
-	panic(fmt.Sprintf("Config.Server type error %v", reflect.TypeOf(config.Server)))
-}
-
-func ParseConfig(path string) (config *Config, err error) {
+func ParseConfig(path string,db *sql.DB) (config *Config, err error) {
 	file, err := os.Open(path) // For read access.
 	if err != nil {
 		return
@@ -74,11 +49,49 @@ func ParseConfig(path string) (config *Config, err error) {
 	if err != nil {
 		return
 	}
-
 	config = &Config{}
 	if err = json.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
+	if config.ServerTag == "" {
+		return nil,fmt.Errorf("you must define a servertag. T:[%s]",config.ServerTag)
+	}
+	if db==nil {
+		Debug.Printf("db is nil, init new connection [%v]",db)
+		if config.DatabaseUser == "" || config.DatabaseName == "" {
+			return nil,fmt.Errorf("db config auth error: U:%s P:%s N:%s",config.DatabaseUser,config.DatabasePass,config.DatabaseName)
+		}
+		if (config.DatabaseHost =="" && config.DatabasePort =="") || config.DatabaseUnix=="" {
+			return nil,fmt.Errorf("db connection error H:%s P:%s U:%s",config.DatabaseHost,config.DatabasePort,config.DatabaseUnix)
+		}
+		var dsn,dsnconn string
+		if (config.DatabaseUnix!="") {
+			Debug.Println("db config: socket found, ignore host and port")
+			dsnconn = fmt.Sprintf("unix(%s)",config.DatabaseUnix)
+		} else {
+			Debug.Println("db config: use tcp")
+			dsnconn = fmt.Sprintf("tcp(%s:%s)",config.DatabaseHost,config.DatabasePort)
+		}		
+		if config.DatabasePass != "" {
+			dsn = fmt.Sprintf("%s:%s@%s/%s?charset=utf8",config.DatabaseUser,config.DatabasePass,dsnconn,config.DatabaseName)
+		} else {
+			dsn = fmt.Sprintf("%s@%s/%s?charset=utf8",config.DatabaseUser,dsnconn,config.DatabaseName)
+		}
+		Debug.Printf("preparing to connect to mysql via dsn:[%v]",dsn)
+		db, err = sql.Open("mysql", dsn)
+		if err!=nil {
+			return nil,err
+		}
+		Debug.Println("mysql connected")
+		db.SetMaxOpenConns(70)
+		db.SetMaxIdleConns(10)
+	}
+	//start connect to db to fetch users to port_password
+	pps,err := fetchUsers(db)
+	if err!=nil {
+		return nil,err
+	}
+	config.PortPassword=pps
 	readTimeout = time.Duration(config.Timeout) * time.Second
 	if strings.HasSuffix(strings.ToLower(config.Method), "-auth") {
 		config.Method = config.Method[:len(config.Method)-5]
@@ -86,6 +99,26 @@ func ParseConfig(path string) (config *Config, err error) {
 	}
 	return
 }
+func fetchUsers(db *sql.DB) (map[string]string,error) {
+	pps := make(map[string]string)
+	db.Exec("UPDATE ss_users SET active = 1 where u + d < limits and active=0;")
+	db.Exec("UPDATE ss_users SET active = 0 where u + d >= limits and active=1;")
+	rows, err := db.Query("SELECT port,passwd FROM ss_users WHERE active = 1;")
+    if err != nil {
+        return nil,err
+    }
+	for rows.Next() {
+        var k,v string
+        err = rows.Scan(&k, &v)
+		if k=="" || v=="" {
+			continue
+		}
+		pps[k]=v
+    }
+	return pps,nil
+}
+
+
 
 func SetDebug(d DebugLog) {
 	Debug = d

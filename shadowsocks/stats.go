@@ -51,7 +51,6 @@ func updateD(port string,d int) {
     }
 }
 
-
 func AddStat(port string) {
     var mutex sync.Mutex    
     mutex.Lock()

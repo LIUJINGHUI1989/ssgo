@@ -18,7 +18,8 @@ import (
 	"syscall"
 	"net/http"
 	"time"
-
+	_ "github.com/go-sql-driver/mysql"
+	"database/sql"
 	ss "github.com/realpg/ssgo/shadowsocks"
 )
 
@@ -39,6 +40,7 @@ const (
 )
 
 var debug ss.DebugLog
+var db *sql.DB
 
 func getRequest(conn *ss.Conn, auth bool) (host string, ota bool, err error) {
 	ss.SetReadTimeout(conn)
@@ -271,6 +273,7 @@ func waitSignal() {
 }
 
 func run(port, password string, auth bool) {
+	ss.AddStat(port)
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		log.Printf("error listening port %v: %v\n", port, err)
@@ -296,27 +299,15 @@ func run(port, password string, auth bool) {
 				continue
 			}
 		}
-		ss.AddStat(port)
 		go handleConnection(ss.NewConn(conn, cipher.Copy(),port), auth)
 	}
 }
 
-func enoughOptions(config *ss.Config) bool {
-	return config.ServerPort != 0 && config.Password != ""
-}
 
 func unifyPortPassword(config *ss.Config) (err error) {
 	if len(config.PortPassword) == 0 { // this handles both nil PortPassword and empty one
-		if !enoughOptions(config) {
-			fmt.Fprintln(os.Stderr, "must specify both port and password")
-			return errors.New("not enough options")
-		}
-		port := strconv.Itoa(config.ServerPort)
-		config.PortPassword = map[string]string{port: config.Password}
-	} else {
-		if config.Password != "" || config.ServerPort != 0 {
-			fmt.Fprintln(os.Stderr, "given port_password, ignore server_port and password option")
-		}
+		fmt.Fprintln(os.Stderr, "no port_password loaded")
+		return errors.New("load nothing")
 	}
 	return
 }
@@ -331,14 +322,12 @@ func main() {
 	var printVer bool
 	var core int
 
-	flag.BoolVar(&printVer, "version", false, "print version")
+	flag.BoolVar(&printVer, "version", false, "show version")
 	flag.StringVar(&configFile, "c", "config.json", "specify config file")
-	flag.StringVar(&cmdConfig.Password, "k", "", "password")
-	flag.IntVar(&cmdConfig.ServerPort, "p", 0, "server port")
 	flag.IntVar(&cmdConfig.Timeout, "t", 300, "timeout in seconds")
-	flag.StringVar(&cmdConfig.Method, "m", "", "encryption method, default: aes-256-cfb")
+	flag.StringVar(&cmdConfig.Method, "m", "", "encryption method, aes-128-cfb if empty")
 	flag.IntVar(&core, "core", 0, "maximum number of CPU cores to use, default is determinied by Go runtime")
-	flag.BoolVar((*bool)(&debug), "d", false, "print debug message")
+	flag.BoolVar((*bool)(&debug), "d", false, "debug mode")
 	flag.Parse()
 	ss.InitStats()
 
@@ -366,7 +355,7 @@ func main() {
 		ss.UpdateConfig(config, &cmdConfig)
 	}
 	if config.Method == "" {
-		config.Method = "aes-256-cfb"
+		config.Method = "aes-128-cfb"
 	}
 	if err = ss.CheckCipherMethod(config.Method); err != nil {
 		fmt.Fprintln(os.Stderr, err)

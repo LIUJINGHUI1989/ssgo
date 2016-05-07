@@ -4,5 +4,12 @@
 		"18388": "barfoo"
 	},
 	"method": "aes-128-cfb",
-	"timeout": 600
+	"timeout": 600,
+	"dbunix": "",
+	"dbhost": "127.0.0.1",
+	"dbport": "3306",
+	"dbuser": "ss-go",
+	"dbpass": "123456",
+	"dbname": "ssgo",
+	"servertag": "Server01"
 }
