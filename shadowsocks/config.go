@@ -20,6 +20,7 @@ type Config struct {
 
 	// following options are only used by server
 	PortPassword map[string]string `json:"port_password"`
+	PortUID map[string]string
 	Timeout      int               `json:"timeout"`
 
 	// following options are only used by client
@@ -96,11 +97,12 @@ func ParseConfig(path string,db *sql.DB) (config *Config, err error) {
 		return nil,err
 	}
 	//start connect to db to fetch users to port_password
-	pps,err := fetchUsers(db,config)
+	pps,pus,err := fetchUsers(db,config)
 	if err!=nil {
 		return nil,err
 	}
-	config.PortPassword=pps
+	config.PortPassword = pps
+	config.PortUID = pus
 	readTimeout = time.Duration(config.Timeout) * time.Second
 	if strings.HasSuffix(strings.ToLower(config.Method), "-auth") {
 		config.Method = config.Method[:len(config.Method)-5]
@@ -148,34 +150,36 @@ func chkServer(db *sql.DB,config *Config) error {
 	}
 }
 
-func fetchUsers(db *sql.DB,config *Config) (map[string]string,error) {
+func fetchUsers(db *sql.DB,config *Config) (map[string]string,map[string]string,error) {
 	pps := make(map[string]string)
+	pus := make(map[string]string)
 	db.Exec("UPDATE ss_user SET active = 1 where u + d < limits and active=0;")
 	db.Exec("UPDATE ss_user SET active = 0 where u + d >= limits and active=1;")
 	db.Exec("DELETE from ss_user where email='keepalive@server' or port='18181';")
 	stmt, err := db.Prepare("INSERT INTO ss_user (name,email,port,passwd,limits,active) values ('keepalive','keepalive@server',18181,?,100000000000,1);")
 	if err != nil {
-		return nil,err
+		return nil,nil,err
 	}
 	stmt.Exec(Krand(16,3))
 	if err !=nil {
-		return nil,err
+		return nil,nil,err
 	}
 	stmt.Close()
 	db.Exec(fmt.Sprintf("INSERT IGNORE INTO ss_detail (server_id, user_id) SELECT %d, id FROM ss_user WHERE active = 1",config.ServerID))   
-	rows, err := db.Query("SELECT port,passwd FROM ss_user WHERE active = 1;")
+	rows, err := db.Query("SELECT id,port,passwd FROM ss_user WHERE active = 1;")
     if err != nil {
-        return nil,err
+        return nil,nil,err
     }
 	for rows.Next() {
-        var k,v string
-        err = rows.Scan(&k, &v)
+        var k,v,u string
+        err = rows.Scan(&u, &k, &v)
 		if k=="" || v=="" {
 			continue
 		}
 		pps[k]=v
+		pus[k]=u
     }
-	return pps,nil
+	return pps,pus,nil
 }
 
 
