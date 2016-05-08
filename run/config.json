@@ -8,8 +8,9 @@
 	"dbunix": "",
 	"dbhost": "127.0.0.1",
 	"dbport": "3306",
-	"dbuser": "ss-go",
-	"dbpass": "123456",
-	"dbname": "ssgo",
-	"servertag": "Server01"
+	"dbuser": "ss",
+	"dbpass": "TJRJwAE6UWKvbEVP",
+	"dbname": "ss",
+	"servertag": "Server01",
+	"serveraddr": "25.68.30.41"
 }

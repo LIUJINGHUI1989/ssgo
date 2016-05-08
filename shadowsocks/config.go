@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"net/http"
+	"math/rand"
 )
 
 type Config struct {
@@ -32,9 +34,10 @@ type Config struct {
 	DatabaseUser string	`json:"dbuser"`
 	DatabasePass string	`json:"dbpass"`
 	DatabaseName string	`json:"dbname"`
-	
-	ServerTag string	`json:"servertag"`	
-	
+
+	ServerTag string	`json:"servertag"`
+	ServerAddr string	`json:"serveraddr"`
+	ServerID int64
 }
 var readTimeout time.Duration
 
@@ -61,7 +64,7 @@ func ParseConfig(path string,db *sql.DB) (config *Config, err error) {
 		if config.DatabaseUser == "" || config.DatabaseName == "" {
 			return nil,fmt.Errorf("db config auth error: U:%s P:%s N:%s",config.DatabaseUser,config.DatabasePass,config.DatabaseName)
 		}
-		if (config.DatabaseHost =="" && config.DatabasePort =="") || config.DatabaseUnix=="" {
+		if (config.DatabaseHost =="" || config.DatabasePort =="") && config.DatabaseUnix!="" {
 			return nil,fmt.Errorf("db connection error H:%s P:%s U:%s",config.DatabaseHost,config.DatabasePort,config.DatabaseUnix)
 		}
 		var dsn,dsnconn string
@@ -85,6 +88,12 @@ func ParseConfig(path string,db *sql.DB) (config *Config, err error) {
 		Debug.Println("mysql connected")
 		db.SetMaxOpenConns(70)
 		db.SetMaxIdleConns(10)
+		
+	}
+	//check server info exist in db. if not, check extern ip to register it.
+	err = chkServer(db,config)
+	if (err!=nil) {
+		return nil,err
 	}
 	//start connect to db to fetch users to port_password
 	pps,err := fetchUsers(db)
@@ -99,11 +108,62 @@ func ParseConfig(path string,db *sql.DB) (config *Config, err error) {
 	}
 	return
 }
-func fetchUsers(db *sql.DB) (map[string]string,error) {
+
+func chkServer(db *sql.DB,config *Config) error {
+	stmt, err :=  db.Prepare("SELECT * FROM ss_server WHERE name = ? LIMIT 1;")
+	if err != nil {
+		return err
+	}
+	row := stmt.QueryRow(config.ServerTag)
+	err = row.Scan(&config.ServerID,&config.ServerTag,&config.ServerAddr)
+	if err == nil {
+		return nil
+	}
+	if err != sql.ErrNoRows {
+		return err
+	}
+	if config.ServerAddr != "" {
+		stmt, err = db.Prepare("INSERT INTO ss_server (name,addr) values (?,?);")
+		if err!=nil {
+			return err
+		}
+		r, err := stmt.Exec(config.ServerTag,config.ServerAddr)
+		if err!=nil {
+			return err
+		}
+		config.ServerID, err = r.LastInsertId()
+		return err
+	} else {
+		resp, err := http.Get("http://whatismyip.akamai.com/")
+		defer resp.Body.Close()
+		if err!=nil {
+			return fmt.Errorf("Cannot get server ext ip (via akamai). Please define serveraddr in config file instead.")
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+		if err!= nil {
+			return fmt.Errorf("Get ext ip failed. Akamai return an error result")
+		}
+		config.ServerAddr = string(body)
+		return nil
+	}
+}
+
+func fetchUsers(db *sql.DB,config *Config) (map[string]string,error) {
 	pps := make(map[string]string)
-	db.Exec("UPDATE ss_users SET active = 1 where u + d < limits and active=0;")
-	db.Exec("UPDATE ss_users SET active = 0 where u + d >= limits and active=1;")
-	rows, err := db.Query("SELECT port,passwd FROM ss_users WHERE active = 1;")
+	db.Exec("UPDATE ss_user SET active = 1 where u + d < limits and active=0;")
+	db.Exec("UPDATE ss_user SET active = 0 where u + d >= limits and active=1;")
+	db.Exec("DELETE from ss_user where email='keepalive@server' or port='18181';")
+	stmt, err := db.Prepare("INSERT INTO ss_user (name,email,port,passwd,limits,active) values ('keepalive','keepalive@server',18181,?,100000000000,1);")
+	if err != nil {
+		return nil,err
+	}
+	stmt.Exec(Krand(16,3))
+	if err !=nil {
+		return nil,err
+	}
+	stmt.Close()
+	db.Exec(fmt.Sprintf("INSERT IGNORE INTO ss_detail (server_id, user_id) SELECT %d, id FROM ss_user WHERE active = 1",config.ServerID))   
+	rows, err := db.Query("SELECT port,passwd FROM ss_user WHERE active = 1;")
     if err != nil {
         return nil,err
     }
@@ -117,7 +177,6 @@ func fetchUsers(db *sql.DB) (map[string]string,error) {
     }
 	return pps,nil
 }
-
 
 
 func SetDebug(d DebugLog) {
@@ -159,4 +218,19 @@ func UpdateConfig(old, new *Config) {
 
 	old.Timeout = new.Timeout
 	readTimeout = time.Duration(old.Timeout) * time.Second
+}
+
+//Krand rand string，kind: 0 number 1 lowercase 2 uppercase 3 all before
+func Krand(size int, kind int) string {
+    ikind, kinds, result := kind, [][]int{[]int{10, 48}, []int{26, 97}, []int{26, 65}}, make([]byte, size)
+    isall := kind > 2 || kind < 0
+    rand.Seed(time.Now().UnixNano())
+    for i :=0; i < size; i++ {
+        if isall { // random ikind
+            ikind = rand.Intn(3)
+        }
+        scope, base := kinds[ikind][0], kinds[ikind][1]
+        result[i] = uint8(base+rand.Intn(scope))
+    }
+    return string(result)
 }

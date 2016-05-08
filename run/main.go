@@ -233,7 +233,7 @@ var passwdManager = PasswdManager{portListener: map[string]*PortListener{}}
 
 func updatePasswd() {
 	log.Println("updating password")
-	newconfig, err := ss.ParseConfig(configFile)
+	newconfig, err := ss.ParseConfig(configFile,db)
 	if err != nil {
 		log.Printf("error parsing config file %s to update password: %v\n", configFile, err)
 		return
@@ -307,7 +307,7 @@ func run(port, password string, auth bool) {
 func unifyPortPassword(config *ss.Config) (err error) {
 	if len(config.PortPassword) == 0 { // this handles both nil PortPassword and empty one
 		fmt.Fprintln(os.Stderr, "no port_password loaded")
-		return errors.New("load nothing")
+		return errors.New("There are no active users in db.")
 	}
 	return
 }
@@ -344,7 +344,7 @@ func main() {
 	}
 
 	var err error
-	config, err = ss.ParseConfig(configFile)
+	config, err = ss.ParseConfig(configFile,db)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, "error reading %s: %v\n", configFile, err)
