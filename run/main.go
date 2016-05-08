@@ -233,8 +233,9 @@ func (pm *PasswdManager) updatePortPasswd(port, password string, auth bool) {
 var passwdManager = PasswdManager{portListener: map[string]*PortListener{}}
 
 func updatePasswd() {
+	var cdb *sql.DB;
 	log.Println("updating password")
-	newconfig, err := ss.ParseConfig(configFile,db)
+	newconfig, err := ss.ParseConfig(configFile,cdb)
 	if err != nil {
 		log.Printf("error parsing config file %s to update password: %v\n", configFile, err)
 		return
@@ -259,19 +260,7 @@ func updatePasswd() {
 	log.Println("password updated")
 }
 
-func waitSignal() {
-	var sigChan = make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGHUP)
-	for sig := range sigChan {
-		if sig == syscall.SIGHUP {
-			updatePasswd()
-		} else {
-			// is this going to happen?
-			log.Printf("caught signal %v, exit", sig)
-			os.Exit(0)
-		}
-	}
-}
+
 
 func run(port, password string, auth bool) {
 	ss.AddStat(port)
@@ -322,6 +311,8 @@ func main() {
 	var cmdConfig ss.Config
 	var printVer bool
 	var core int
+	var cdb *sql.DB;
+	var err error
 
 	flag.BoolVar(&printVer, "v", false, "show version and about")
 	flag.StringVar(&configFile, "c", "config.json", "specify config file")
@@ -337,12 +328,12 @@ func main() {
 		os.Exit(0)
 	}
 	
-	dbfile,err := os.OpenFile("dbfail.log",os.O_CREATE|os.O_APPEND,0660)
+	dbfile,err = os.OpenFile("dbfail.log",os.O_CREATE|os.O_APPEND,0660)
 	if err!=nil {
 		fmt.Println("Cannot open db-failsafe log file [dbfail.log]. Please check write permission!")
 		os.Exit(1)
 	}
-	defer dbfile.Close()
+	dbfile.WriteString(fmt.Sprintf("### Server started at %s\n",time.Now().Format("2006-01-02 15:04:05")))
 
 	ss.SetDebug(debug)
 
@@ -351,7 +342,7 @@ func main() {
 		cmdConfig.Auth = true
 	}
 
-	config, err = ss.ParseConfig(configFile,db)
+	config, err = ss.ParseConfig(configFile,cdb)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, "error reading %s: %v\n", configFile, err)
@@ -374,18 +365,41 @@ func main() {
 	if core > 0 {
 		runtime.GOMAXPROCS(core)
 	}
+	db, err = sql.Open("mysql", config.DSN)
+	if err!=nil {
+		fmt.Printf("Error while connecting to database via dsn %s. [%s]\n",config.DSN,err.Error())
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	
 	for port, password := range config.PortPassword {
 		go run(port, password, config.Auth)
 	}
-	defer save2DB(2)
+	
 	http.HandleFunc("/", statusPage)
-	http.ListenAndServe(":7777", nil)
+	http.HandleFunc("/reload",reload)
 	go saveStat()
-	waitSignal()
+	go safeQuitListener()
+	http.ListenAndServe(":7777", nil)	
 }
 
+func safeQuitListener() {
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, os.Kill)
+    <-c
+    println("Got break signal, dumping...")
+    save2DB(2)
+	dbfile.Close()
+    println("Dump finished... Exiting.")
+    os.Exit(0)
+}
+
+func reload(w http.ResponseWriter, req *http.Request) {
+	updatePasswd()
+	io.WriteString(w, "OK")
+}
 func statusPage(w http.ResponseWriter, req *http.Request) {
-	str := fmt.Sprintf("ShadowSocks Server Stat:\n\nDBPool: %d\n\n",db.Stats().OpenConnections)
+	str := fmt.Sprintf("ShadowSocks Server Stat:\n\nDB pool: %d\n\n",db.Stats().OpenConnections) 
 	for port,stat:=range ss.Stats  {
 		str += fmt.Sprintf("Port: %s\t U: %v(%v) D: %v(%v) T: %v\n",port,readable(stat.U),readable(stat.U+stat.Ue),readable(stat.D),readable(stat.D+stat.De),time.Unix(stat.T,0).Format("2006-01-02 15:04:05"))	 
 	} 
@@ -408,6 +422,7 @@ func readable(bytes int64) string {
 
 
 func saveStat() {
+	debug.Println("First call saveStat")
     timer := time.NewTimer(14 * time.Second)
     for {
         <-timer.C
@@ -458,30 +473,34 @@ func save2DB(r int) {
 	sqlpp += whenpp1 + " END, d = CASE port" + whenpp2 + " END, ue = CASE port" + whenpp3 + " END, de = CASE port" + whenpp4
 	sqlpp += fmt.Sprintf(" END, t = %v WHERE port IN (%s);",t,inpp)
 	debug.Println("SQL-pp:",sqlpp)
-	sqlpu += whenpu1 + " END, d = CASE port" + whenpu2 + " END, ue = CASE port" + whenpu3 + " END, de = CASE port" + whenpu4
-	sqlpu += fmt.Sprintf(" END, t = %v WHERE port IN (%s) AND server_id = %v;",t,inpu,config.ServerID)
+	sqlpu += whenpu1 + " END, d = CASE user_id" + whenpu2 + " END, ue = CASE user_id" + whenpu3 + " END, de = CASE user_id" + whenpu4
+	sqlpu += fmt.Sprintf(" END, t = %v WHERE user_id IN (%s) AND server_id = %v;",t,inpu,config.ServerID)
 	debug.Println("SQL-pu:",sqlpu)
 	
 	_,err := db.Exec(sqlpp)
 	if (err!=nil) {
+		debug.Printf("[DBEXEC ERROR] %s",err.Error())
 		dbFail(sqlpp,err)
 	}
 	_,err = db.Exec(sqlpu)
 	if (err!=nil) {
+		debug.Printf("[DBEXEC ERROR] %s",err.Error())
 		dbFail(sqlpu,err)
 	}
 }
 
 func dbFail(sql string,err error) {
-	fmt.Printf("[save2db]Fail to execute sql (ERR:%s), saving to failsafe log",err.Error())
-	_,err = dbfile.WriteString(fmt.Sprintf("### %s\n",time.Now().Format("2006-01-02 15:04:05")))
+	fmt.Printf("[save2db]Fail to execute sql (ERR:%s), saving to failsafe log\n",err.Error())
+	str := fmt.Sprintf("### %s\n",time.Now().Format("2006-01-02 15:04:05"))
+	_,err = dbfile.WriteString(str)
 	if err!=nil {
-		fmt.Println("Error writing db failsafe file [dbfail.log], system will exit")
+		fmt.Printf("Error writing db failsafe file [dbfail.log](%s), system will exit\n",err.Error())
 		os.Exit(1)
 	}
-	_,err = dbfile.WriteString(fmt.Sprintf("%s\n###end\n",sql))
+	str = fmt.Sprintf("%s\n###end\n",sql)
+	_,err = dbfile.WriteString(str)
 	if err!=nil {
-		fmt.Println("Error writing db failsafe file [dbfail.log], system will exit")
+		fmt.Printf("Error writing db failsafe file [dbfail.log](%s), system will exit\n",err.Error())
 		os.Exit(1)
 	}
 }

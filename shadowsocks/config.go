@@ -39,6 +39,7 @@ type Config struct {
 	ServerTag string	`json:"servertag"`
 	ServerAddr string	`json:"serveraddr"`
 	ServerID int64
+	DSN string			`json:"dsn"`
 }
 var readTimeout time.Duration
 
@@ -62,34 +63,37 @@ func ParseConfig(path string,db *sql.DB) (config *Config, err error) {
 	}
 	if db==nil {
 		Debug.Printf("db is nil, init new connection [%v]",db)
-		if config.DatabaseUser == "" || config.DatabaseName == "" {
-			return nil,fmt.Errorf("db config auth error: U:%s P:%s N:%s",config.DatabaseUser,config.DatabasePass,config.DatabaseName)
-		}
-		if (config.DatabaseHost =="" || config.DatabasePort =="") && config.DatabaseUnix!="" {
-			return nil,fmt.Errorf("db connection error H:%s P:%s U:%s",config.DatabaseHost,config.DatabasePort,config.DatabaseUnix)
-		}
-		var dsn,dsnconn string
-		if (config.DatabaseUnix!="") {
-			Debug.Println("db config: socket found, ignore host and port")
-			dsnconn = fmt.Sprintf("unix(%s)",config.DatabaseUnix)
+		if config.DSN != "" {
+			Debug.Printf("preparing to connect to mysql via origin dsn:[%v]",config.DSN)
 		} else {
-			Debug.Println("db config: use tcp")
-			dsnconn = fmt.Sprintf("tcp(%s:%s)",config.DatabaseHost,config.DatabasePort)
-		}		
-		if config.DatabasePass != "" {
-			dsn = fmt.Sprintf("%s:%s@%s/%s?charset=utf8",config.DatabaseUser,config.DatabasePass,dsnconn,config.DatabaseName)
-		} else {
-			dsn = fmt.Sprintf("%s@%s/%s?charset=utf8",config.DatabaseUser,dsnconn,config.DatabaseName)
+			if config.DatabaseUser == "" || config.DatabaseName == "" {
+				return nil,fmt.Errorf("db config auth error: U:%s P:%s N:%s",config.DatabaseUser,config.DatabasePass,config.DatabaseName)
+			}
+			if (config.DatabaseHost =="" || config.DatabasePort =="") && config.DatabaseUnix!="" {
+				return nil,fmt.Errorf("db connection error H:%s P:%s U:%s",config.DatabaseHost,config.DatabasePort,config.DatabaseUnix)
+			}
+			var dsnconn string
+			if (config.DatabaseUnix!="") {
+				Debug.Println("db config: socket found, ignore host and port")
+				dsnconn = fmt.Sprintf("unix(%s)",config.DatabaseUnix)
+			} else {
+				Debug.Println("db config: use tcp")
+				dsnconn = fmt.Sprintf("tcp(%s:%s)",config.DatabaseHost,config.DatabasePort)
+			}		
+			if config.DatabasePass != "" {
+				config.DSN = fmt.Sprintf("%s:%s@%s/%s?charset=utf8",config.DatabaseUser,config.DatabasePass,dsnconn,config.DatabaseName)
+			} else {
+				config.DSN = fmt.Sprintf("%s@%s/%s?charset=utf8",config.DatabaseUser,dsnconn,config.DatabaseName)
+			}
+			Debug.Printf("preparing to connect to mysql via builded dsn:[%v]",config.DSN)
 		}
-		Debug.Printf("preparing to connect to mysql via dsn:[%v]",dsn)
-		db, err = sql.Open("mysql", dsn)
+		db, err = sql.Open("mysql", config.DSN)
 		if err!=nil {
 			return nil,err
 		}
 		Debug.Println("mysql connected")
-		db.SetMaxOpenConns(70)
-		db.SetMaxIdleConns(10)
-		
+		db.SetMaxOpenConns(20)
+		db.SetMaxIdleConns(15)
 	}
 	//check server info exist in db. if not, check extern ip to register it.
 	err = chkServer(db,config)
