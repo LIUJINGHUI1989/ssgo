@@ -96,7 +96,7 @@ func ParseConfig(path string,db *sql.DB) (config *Config, err error) {
 		return nil,err
 	}
 	//start connect to db to fetch users to port_password
-	pps,err := fetchUsers(db)
+	pps,err := fetchUsers(db,config)
 	if err!=nil {
 		return nil,err
 	}
