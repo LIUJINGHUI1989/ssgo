@@ -1,10 +1,6 @@
 {
-	"port_password": {
-		"18387": "foobar",
-		"18388": "barfoo"
-	},
-	"method": "aes-128-cfb",
 	"timeout": 600,
+	"method": "aes-128-cfb",
 	"dbunix": "",
 	"dbhost": "127.0.0.1",
 	"dbport": "3306",

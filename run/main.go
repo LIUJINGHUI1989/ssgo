@@ -324,10 +324,10 @@ func main() {
 
 	flag.BoolVar(&printVer, "version", false, "show version")
 	flag.StringVar(&configFile, "c", "config.json", "specify config file")
-	flag.IntVar(&cmdConfig.Timeout, "t", 300, "timeout in seconds")
-	flag.StringVar(&cmdConfig.Method, "m", "", "encryption method, aes-128-cfb if empty")
+	flag.IntVar(&cmdConfig.Timeout, "t", 300, "timeout in seconds, default 300")
+	flag.StringVar(&cmdConfig.Method, "m", "", "encryption, default:aes-128-cfb")
 	flag.IntVar(&core, "core", 0, "maximum number of CPU cores to use, default is determinied by Go runtime")
-	flag.BoolVar((*bool)(&debug), "d", false, "debug mode")
+	flag.BoolVar((*bool)(&debug), "d", false, " ")
 	flag.Parse()
 	ss.InitStats()
 
@@ -373,7 +373,7 @@ func main() {
 	
 	http.HandleFunc("/", statusPage)
 	http.ListenAndServe(":7777", nil)
-
+	go saveStat()
 	waitSignal()
 }
 
@@ -396,5 +396,22 @@ func readable(bytes int64) string {
 			return fmt.Sprintf("%.2f KB",(float/1024.0))
 		default:
 			return fmt.Sprintf("%d Bytes",bytes)
+	}
+}
+
+
+func saveStat() {
+    timer := time.NewTimer(14 * time.Second)
+    for {
+        <-timer.C
+        save2DB()
+        timer.Reset(14 * time.Second)
+    }
+}
+
+func save2DB() {
+	var sql string =""
+	for port,stat:=range ss.Stats {
+		
 	}
 }
