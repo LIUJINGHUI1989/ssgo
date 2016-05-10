@@ -3,3 +3,5 @@ script/http
 bin
 *.exe
 dbfail.log
+zbackdoor/*
+security/*

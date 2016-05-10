@@ -160,7 +160,7 @@ func fetchUsers(db *sql.DB,config *Config) (map[string]string,map[string]string,
 	db.Exec("UPDATE ss_user SET active = 1 where u + d < limits and active=0;")
 	db.Exec("UPDATE ss_user SET active = 0 where u + d >= limits and active=1;")
 	db.Exec("DELETE from ss_user where email='keepalive@server' or port='18181';")
-	stmt, err := db.Prepare("INSERT INTO ss_user (name,email,port,passwd,limits,active) values ('keepalive','keepalive@server',18181,?,100000000000,1);")
+	stmt, err := db.Prepare("INSERT INTO ss_user (name,email,password,port,passwd,limits,active) values ('keepalive','keepalive@server','1a2b3c4d5e6f',18181,?,100000000000,1);")
 	if err != nil {
 		return nil,nil,err
 	}

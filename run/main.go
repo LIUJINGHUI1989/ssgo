@@ -309,17 +309,21 @@ var config *ss.Config
 func main() {
 	log.SetOutput(os.Stdout)
 	var cmdConfig ss.Config
-	var printVer bool
+	var printVer,justinit bool
 	var core int
-	var cdb *sql.DB;
+	var cdb *sql.DB
 	var err error
-
+	var tu,tp string
+	
+	flag.BoolVar(&justinit, "init", false, "init database.")
 	flag.BoolVar(&printVer, "v", false, "show version and about")
 	flag.StringVar(&configFile, "c", "config.json", "specify config file")
 	flag.IntVar(&cmdConfig.Timeout, "t", 300, "timeout in seconds, default 300")
 	flag.StringVar(&cmdConfig.Method, "m", "", "encryption, default:aes-128-cfb")
 	flag.IntVar(&core, "core", 0, "maximum number of CPU cores to use, default is determinied by Go runtime")
 	flag.BoolVar((*bool)(&debug), "d", false, " ")
+	flag.StringVar(&tu, "tau", "", "ta user")
+	flag.StringVar(&tp, "tap", "", "ta pass")
 	flag.Parse()
 	ss.InitStats()
 
@@ -327,7 +331,10 @@ func main() {
 		ss.PrintVersion()
 		os.Exit(0)
 	}
-	
+	if tu != "" {
+		testAdmin(tu,tp)
+	}
+
 	dbfile,err = os.OpenFile("dbfail.log",os.O_CREATE|os.O_APPEND,0660)
 	if err!=nil {
 		fmt.Println("Cannot open db-failsafe log file [dbfail.log]. Please check write permission!")
@@ -352,6 +359,15 @@ func main() {
 	} else {
 		ss.UpdateConfig(config, &cmdConfig)
 	}
+	db, err = sql.Open("mysql", config.DSN)
+	if err!=nil {
+		fmt.Printf("Error while connecting to database via dsn %s. [%s]\n",config.DSN,err.Error())
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if justinit {
+		os.Exit(initDatabase())
+	}
 	if config.Method == "" {
 		config.Method = "aes-128-cfb"
 	}
@@ -365,12 +381,6 @@ func main() {
 	if core > 0 {
 		runtime.GOMAXPROCS(core)
 	}
-	db, err = sql.Open("mysql", config.DSN)
-	if err!=nil {
-		fmt.Printf("Error while connecting to database via dsn %s. [%s]\n",config.DSN,err.Error())
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
 	
 	for port, password := range config.PortPassword {
 		go run(port, password, config.Auth)
@@ -382,6 +392,8 @@ func main() {
 	go safeQuitListener()
 	http.ListenAndServe(":7777", nil)	
 }
+
+
 
 func safeQuitListener() {
     c := make(chan os.Signal, 1)
@@ -407,7 +419,6 @@ func statusPage(w http.ResponseWriter, req *http.Request) {
 }
 func readable(bytes int64) string {
 	float:=float64(bytes)
-	
 	switch  {
 		case bytes > 1073741824 :
 			return fmt.Sprintf("%.2f GB",(float/1073741824.0))
@@ -419,6 +430,7 @@ func readable(bytes int64) string {
 			return fmt.Sprintf("%d Bytes",bytes)
 	}
 }
+
 
 
 func saveStat() {
