@@ -8,13 +8,13 @@ import (
     "fmt"
     "os"
 )
-var salt = "QuickSS, a free ss system."
+var salt,protocol = "QuickSS, a free ss system." , "tcp"
 
 
 func G(n,p string) (string){
     v1 := md5.Sum(Krand(64,3))
     v1s := fmt.Sprintf("%x",v1)
-    t1s := v1s + n + p + salt
+    t1s := v1s + protocol + n + p + salt
     t1h := sha1.Sum([]byte(t1s))
     t1hs := fmt.Sprintf("%x",t1h)
     return v1s + t1hs
@@ -22,7 +22,7 @@ func G(n,p string) (string){
 
 func V(n,p,hash string) bool {
     v2s := SubString(hash,0,32)
-    t2s := v2s + n + p + salt
+    t2s := v2s + protocol + n + p + salt
     t2h := sha1.Sum([]byte(t2s))
     t2hs := fmt.Sprintf("%x",t2h)
     h2 := v2s + t2hs
@@ -49,14 +49,14 @@ func Test(n,p string) {
     fmt.Printf("TAU: %s TAP: %s\n\nStep1:\n",n,p)
     v1 := md5.Sum(Krand(64,3))
     v1s := fmt.Sprintf("%x",v1)
-    t1s := v1s + n + p + salt
+    t1s := v1s + protocol + n + p + salt
     t1h := sha1.Sum([]byte(t1s))
     t1hs := fmt.Sprintf("%x",t1h)
     h1 := v1s + t1hs
     t1s = "" //重要内容隐去 如需调试注释本行
     fmt.Printf("V1s: %s\nT1s: %s\nT1hs: %s\nCalc: %s\n\nStep2:\nsrcH: %s\n",v1s,t1s,t1hs,h1,h1)
     v2s := SubString(h1,0,32)
-    t2s := v2s + n + p + salt
+    t2s := v2s + protocol + n + p + salt
     t2h := sha1.Sum([]byte(t2s))
     t2hs := fmt.Sprintf("%x",t2h)
     h2 := v1s + t1hs
